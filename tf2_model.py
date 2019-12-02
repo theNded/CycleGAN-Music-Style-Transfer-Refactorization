@@ -34,9 +34,9 @@ class CycleGAN(object):
 
         OPTIONS = namedtuple('OPTIONS', 'batch_size '
                                         'time_step '
+                                        'pitch_range '
                                         'input_nc '
                                         'output_nc '
-                                        'pitch_range '
                                         'gf_dim '
                                         'df_dim '
                                         'is_training')
@@ -102,6 +102,16 @@ class CycleGAN(object):
         self.checkpoint_dir = os.path.join(args.checkpoint_dir,
                                            model_dir,
                                            model_name)
+
+        log_dir = os.path.join(args.log_dir,
+                               '{}2{}_{}_{}_{}'.format(self.dataset_A_dir,
+                                                       self.dataset_B_dir,
+                                                       self.now_datetime,
+                                                       self.model,
+                                                       self.sigma_d))
+        file_writer = tf.summary.create_file_writer(log_dir)
+        file_writer.set_as_default()
+
         if not os.path.exists(self.checkpoint_dir):
             os.makedirs(self.checkpoint_dir)
 
@@ -147,9 +157,10 @@ class CycleGAN(object):
         if self.model == 'full':
             data_mixed = glob('./datasets/JCP_mixed/*.*')
 
-        if args.continue_train:
+        if args.continue_train and checkpoint_manager.latest_checkpoint is not None:
             if self.checkpoint.restore(self.checkpoint_manager.latest_checkpoint):
                 print(" [*] Load checkpoint succeeded!")
+                print(' checkpoint path {}'.format(self.checkpoint_manager.latest_checkpoint))
             else:
                 print(" [!] Load checkpoint failed...")
 
@@ -215,23 +226,23 @@ class CycleGAN(object):
                         DB_fake = self.discriminator_B(fake_B + gaussian_noise,
                                                        training=True)
 
-                        DA_fake_sample = self.discriminator_A(fake_A_sample + gaussian_noise,
-                                                              training=True)
-                        DB_fake_sample = self.discriminator_B(fake_B_sample + gaussian_noise,
-                                                              training=True)
+                        # DA_fake_sample = self.discriminator_A(fake_A_sample + gaussian_noise,
+                        #                                       training=True)
+                        # DB_fake_sample = self.discriminator_B(fake_B_sample + gaussian_noise,
+                        #                                       training=True)
 
                         # Generator loss
                         cycle_loss = self.L1_lambda * (abs_criterion(real_A, cycle_A) + abs_criterion(real_B, cycle_B))
-                        g_A2B_loss = self.criterionGAN(DB_fake, tf.ones_like(DB_fake)) + cycle_loss
-                        g_B2A_loss = self.criterionGAN(DA_fake, tf.ones_like(DA_fake)) + cycle_loss
-                        g_loss = g_A2B_loss + g_B2A_loss - cycle_loss
+                        g_A2B_loss = self.criterionGAN(DB_fake, tf.ones_like(DB_fake))
+                        g_B2A_loss = self.criterionGAN(DA_fake, tf.ones_like(DA_fake))
+                        g_loss = g_A2B_loss + g_B2A_loss + cycle_loss
 
                         # Discriminator loss
                         d_A_loss_real = self.criterionGAN(DA_real, tf.ones_like(DA_real))
-                        d_A_loss_fake = self.criterionGAN(DA_fake_sample, tf.zeros_like(DA_fake_sample))
+                        d_A_loss_fake = self.criterionGAN(DA_fake, tf.zeros_like(DA_fake))
                         d_A_loss = (d_A_loss_real + d_A_loss_fake) / 2
                         d_B_loss_real = self.criterionGAN(DB_real, tf.ones_like(DB_real))
-                        d_B_loss_fake = self.criterionGAN(DB_fake_sample, tf.zeros_like(DB_fake_sample))
+                        d_B_loss_fake = self.criterionGAN(DB_fake, tf.zeros_like(DB_fake))
                         d_B_loss = (d_B_loss_real + d_B_loss_fake) / 2
                         d_loss = d_A_loss + d_B_loss
 
@@ -260,6 +271,9 @@ class CycleGAN(object):
                     print('=================================================================')
                     print(("Epoch: [%2d] [%4d/%4d] time: %4.4f D_loss: %6.2f, G_loss: %6.2f, cycle_loss: %6.2f" %
                            (epoch, idx, batch_idxs, time.time() - start_time, d_loss, g_loss, cycle_loss)))
+                    tf.summary.scalar('D loss', data=d_loss, step=idx)
+                    tf.summary.scalar('G loss', data=g_loss, step=idx)
+                    tf.summary.scalar('cycle loss', data=cycle_loss, step=idx)
 
                 else:
 
@@ -422,8 +436,10 @@ class CycleGAN(object):
             raise Exception('--which_direction must be AtoB or BtoA')
         sample_files.sort(key=lambda x: int(os.path.splitext(os.path.basename(x))[0].split('_')[-1]))
 
-        if self.checkpoint.restore(self.checkpoint_manager.latest_checkpoint):
+        if self.checkpoint.restore(self.checkpoint_manager.latest_checkpoint) \
+            and self.checkpoint_manager.latest_checkpoint is not None:
             print(" [*] Load checkpoint succeeded!")
+            print(self.checkpoint_manager.latest_checkpoint)
         else:
             print(" [!] Load checkpoint failed...")
 

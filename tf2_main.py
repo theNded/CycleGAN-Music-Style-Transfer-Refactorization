@@ -3,10 +3,12 @@ import os
 from tf2_model import CycleGAN
 from tf2_classifier import Classifier
 
+import tensorflow as tf
+
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('--dataset_A_dir', dest='dataset_A_dir', default='CP_C', help='path of the dataset of domain A')
 parser.add_argument('--dataset_B_dir', dest='dataset_B_dir', default='CP_P', help='path of the dataset of domain B')
-parser.add_argument('--epoch', dest='epoch', type=int, default=10, help='# of epoch')
+parser.add_argument('--epoch', dest='epoch', type=int, default=30, help='# of epoch')
 parser.add_argument('--epoch_step', dest='epoch_step', type=int, default=10, help='# of epoch to decay lr')
 parser.add_argument('--batch_size', dest='batch_size', type=int, default=4, help='# images in batch')
 parser.add_argument('--time_step', dest='time_step', type=int, default=64, help='time step of pianoroll')

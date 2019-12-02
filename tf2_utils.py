@@ -66,7 +66,7 @@ def save_midis(bars, file_path, tempo=80.0):
 
 
 def get_now_datetime():
-    now = datetime.datetime.now().strftime('%Y-%m-%d')
+    now = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M')
     return str(now)
 
 

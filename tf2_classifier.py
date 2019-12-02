@@ -31,9 +31,9 @@ class Classifier(object):
 
         OPTIONS = namedtuple('OPTIONS', 'batch_size '
                                         'time_step '
+                                        'pitch_range '
                                         'input_nc '
                                         'output_nc '
-                                        'pitch_range '
                                         'gf_dim '
                                         'df_dim '
                                         'is_training')

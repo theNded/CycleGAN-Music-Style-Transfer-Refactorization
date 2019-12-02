@@ -236,6 +236,7 @@ def build_discriminator_classifier(options, name='Discriminator_Classifier'):
 
     initializer = tf.random_normal_initializer(0., 0.02)
 
+    print("{} - {} - {}".format(options.time_step, options.pitch_range, options.output_nc))
     inputs = Input(shape=(options.time_step,
                           options.pitch_range,
                           options.output_nc))
