@@ -77,14 +77,10 @@ class CycleGAN(object):
                                                           name='Discriminator_B_all')
 
         # Discriminator and Generator Optimizer
-        self.DA_optimizer = Adam(self.lr,
-                                 beta_1=args.beta1)
-        self.DB_optimizer = Adam(self.lr,
-                                 beta_1=args.beta1)
-        self.GA2B_optimizer = Adam(self.lr,
-                                   beta_1=args.beta1)
-        self.GB2A_optimizer = Adam(self.lr,
-                                   beta_1=args.beta1)
+        self.D_optimizer = Adam(self.lr,
+                                beta_1=args.beta1)
+        self.G_optimizer = Adam(self.lr,
+                                beta_1=args.beta1)
 
         if self.model != 'base':
             self.DA_all_optimizer = Adam(self.lr,
@@ -99,27 +95,19 @@ class CycleGAN(object):
                                             self.now_datetime,
                                             self.model,
                                             self.sigma_d)
-        self.checkpoint_dir = os.path.join(args.checkpoint_dir,
-                                           model_dir,
-                                           model_name)
-
-        log_dir = os.path.join(args.log_dir,
-                               '{}2{}_{}_{}_{}'.format(self.dataset_A_dir,
-                                                       self.dataset_B_dir,
-                                                       self.now_datetime,
-                                                       self.model,
-                                                       self.sigma_d))
-        file_writer = tf.summary.create_file_writer(log_dir)
-        file_writer.set_as_default()
+        if args.checkpoint_full_dir is None:
+            self.checkpoint_dir = os.path.join(args.checkpoint_dir,
+                                               model_dir,
+                                               model_name)
+        else:
+            self.checkpoint_dir = args.checkpoint_full_dir
 
         if not os.path.exists(self.checkpoint_dir):
             os.makedirs(self.checkpoint_dir)
 
         if self.model == 'base':
-            self.checkpoint = tf.train.Checkpoint(generator_A2B_optimizer=self.GA2B_optimizer,
-                                                  generator_B2A_optimizer=self.GB2A_optimizer,
-                                                  discriminator_A_optimizer=self.DA_optimizer,
-                                                  discriminator_B_optimizer=self.DB_optimizer,
+            self.checkpoint = tf.train.Checkpoint(generator_optimizer=self.G_optimizer,
+                                                  discriminator_optimizer=self.D_optimizer,
                                                   generator_A2B=self.generator_A2B,
                                                   generator_B2A=self.generator_B2A,
                                                   discriminator_A=self.discriminator_A,
@@ -147,6 +135,14 @@ class CycleGAN(object):
         #     print('Latest checkpoint restored!!')
 
     def train(self, args):
+        log_dir = os.path.join(args.log_dir,
+                               '{}2{}_{}_{}_{}'.format(self.dataset_A_dir,
+                                                       self.dataset_B_dir,
+                                                       self.now_datetime,
+                                                       self.model,
+                                                       self.sigma_d))
+        file_writer = tf.summary.create_file_writer(log_dir)
+        file_writer.set_as_default()
 
         # Data from domain A and B, and mixed dataset for partial and full models.
         dataA = glob('./datasets/{}/train/*.*'.format(self.dataset_A_dir))
@@ -232,10 +228,11 @@ class CycleGAN(object):
                         #                                       training=True)
 
                         # Generator loss
-                        cycle_loss = self.L1_lambda * (abs_criterion(real_A, cycle_A) + abs_criterion(real_B, cycle_B))
+                        cycle_loss_A = self.L1_lambda * abs_criterion(real_A, cycle_A)
+                        cycle_loss_B = self.L1_lambda * abs_criterion(real_B, cycle_B)
                         g_A2B_loss = self.criterionGAN(DB_fake, tf.ones_like(DB_fake))
                         g_B2A_loss = self.criterionGAN(DA_fake, tf.ones_like(DA_fake))
-                        g_loss = g_A2B_loss + g_B2A_loss + cycle_loss
+                        g_loss = g_A2B_loss + g_B2A_loss + cycle_loss_A + cycle_loss_B
 
                         # Discriminator loss
                         d_A_loss_real = self.criterionGAN(DA_real, tf.ones_like(DA_real))
@@ -247,27 +244,22 @@ class CycleGAN(object):
                         d_loss = d_A_loss + d_B_loss
 
                     # Calculate the gradients for generator and discriminator
-                    generator_A2B_gradients = gen_tape.gradient(target=g_A2B_loss,
-                                                                sources=self.generator_A2B.trainable_variables)
-                    generator_B2A_gradients = gen_tape.gradient(target=g_B2A_loss,
-                                                                sources=self.generator_B2A.trainable_variables)
+                    generator_trainable_variables = self.generator_A2B.trainable_variables + self.generator_B2A.trainable_variables
+                    generator_gradients = gen_tape.gradient(target=g_loss,
+                                                            sources=generator_trainable_variables)
 
-                    discriminator_A_gradients = disc_tape.gradient(target=d_A_loss,
-                                                                   sources=self.discriminator_A.trainable_variables)
-                    discriminator_B_gradients = disc_tape.gradient(target=d_B_loss,
-                                                                   sources=self.discriminator_B.trainable_variables)
+                    discriminator_trainable_variables = self.discriminator_A.trainable_variables + self.discriminator_B.trainable_variables
+                    discriminator_gradients = disc_tape.gradient(target=d_loss,
+                                                                 sources=discriminator_trainable_variables)
 
                     # Apply the gradients to the optimizer
-                    self.GA2B_optimizer.apply_gradients(zip(generator_A2B_gradients,
-                                                            self.generator_A2B.trainable_variables))
-                    self.GB2A_optimizer.apply_gradients(zip(generator_B2A_gradients,
-                                                            self.generator_B2A.trainable_variables))
+                    self.G_optimizer.apply_gradients(zip(generator_gradients,
+                                                         generator_trainable_variables))
 
-                    self.DA_optimizer.apply_gradients(zip(discriminator_A_gradients,
-                                                          self.discriminator_A.trainable_variables))
-                    self.DB_optimizer.apply_gradients(zip(discriminator_B_gradients,
-                                                          self.discriminator_B.trainable_variables))
+                    self.D_optimizer.apply_gradients(zip(discriminator_gradients,
+                                                         discriminator_trainable_variables))
 
+                    cycle_loss = cycle_loss_A + cycle_loss_B
                     print('=================================================================')
                     print(("Epoch: [%2d] [%4d/%4d] time: %4.4f D_loss: %6.2f, G_loss: %6.2f, cycle_loss: %6.2f" %
                            (epoch, idx, batch_idxs, time.time() - start_time, d_loss, g_loss, cycle_loss)))
@@ -436,8 +428,8 @@ class CycleGAN(object):
             raise Exception('--which_direction must be AtoB or BtoA')
         sample_files.sort(key=lambda x: int(os.path.splitext(os.path.basename(x))[0].split('_')[-1]))
 
-        if self.checkpoint.restore(self.checkpoint_manager.latest_checkpoint) \
-            and self.checkpoint_manager.latest_checkpoint is not None:
+        if self.checkpoint_manager.latest_checkpoint is not None \
+           and self.checkpoint.restore(self.checkpoint_manager.latest_checkpoint):
             print(" [*] Load checkpoint succeeded!")
             print(self.checkpoint_manager.latest_checkpoint)
         else:
@@ -461,6 +453,7 @@ class CycleGAN(object):
         if not os.path.exists(test_dir_npy):
             os.makedirs(test_dir_npy)
 
+        cycle_losses = []
         for idx in range(len(sample_files)):
             print('Processing midi: ', sample_files[idx])
             sample_npy = np.load(sample_files[idx]) * 1.
@@ -485,6 +478,11 @@ class CycleGAN(object):
                 cycle = self.generator_A2B(transfer,
                                            training=False)
 
+            cycle_loss = abs_criterion(origin, cycle)
+            cycle_losses.append(cycle_loss)
+            print('loss', cycle_loss)
+            print('mean cycle loss', np.stack(cycle_losses).mean())
+
             save_midis(origin, midi_path_origin)
             save_midis(transfer, midi_path_transfer)
             save_midis(cycle, midi_path_cycle)
@@ -504,6 +502,7 @@ class CycleGAN(object):
             np.save(os.path.join(npy_path_origin, '{}_origin.npy'.format(idx + 1)), origin)
             np.save(os.path.join(npy_path_transfer, '{}_transfer.npy'.format(idx + 1)), transfer)
             np.save(os.path.join(npy_path_cycle, '{}_cycle.npy'.format(idx + 1)), cycle)
+        print(np.stack(cycle_losses).mean())
 
     def test_famous(self, args):
 

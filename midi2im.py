@@ -16,6 +16,6 @@ if __name__ == '__main__':
         if filename.endswith('npy'):
             raw = np.load(os.path.join(args.base_path, filename))
             im = raw.squeeze().astype(np.uint8) * 255
-            plt.imsave('{:03d}.png'.format(cnt), im)
+            plt.imsave('{}/{:03d}.png'.format(args.base_path, cnt), im)
             cnt += 1
 

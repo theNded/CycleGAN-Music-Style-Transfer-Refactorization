@@ -68,9 +68,13 @@ class Classifier(object):
                                                     self.dataset_B_dir,
                                                     self.now_datetime,
                                                     str(self.sigma_c))
-        self.checkpoint_dir = os.path.join(args.checkpoint_dir,
-                                           model_dir,
-                                           model_name)
+
+        if args.checkpoint_full_dir is None:
+            self.checkpoint_dir = os.path.join(args.checkpoint_dir,
+                                               model_dir,
+                                               model_name)
+        else:
+            self.checkpoint_dir = args.checkpoint_full_dir
 
         if not os.path.exists(self.checkpoint_dir):
             os.makedirs(self.checkpoint_dir)
@@ -185,32 +189,19 @@ class Classifier(object):
             self.checkpoint_manager.save(epoch)
 
     def test(self, args):
+        if args.test_full_dir is None:
+            print('Unable to evaluate results')
 
         # load the origin samples in npy format and sorted in ascending order
-        sample_files_origin = glob('./test/{}2{}_{}_{}_{}/{}/npy/origin/*.*'.format(self.dataset_A_dir,
-                                                                                    self.dataset_B_dir,
-                                                                                    self.model,
-                                                                                    self.sigma_d,
-                                                                                    self.now_datetime,
-                                                                                    args.which_direction))
+        sample_files_origin = glob('{}/npy/origin/*.npy'.format(args.test_full_dir))
         sample_files_origin.sort(key=lambda x: int(os.path.splitext(os.path.basename(x))[0].split('_')[0]))
 
         # load the origin samples in npy format and sorted in ascending order
-        sample_files_transfer = glob('./test/{}2{}_{}_{}_{}/{}/npy/transfer/*.*'.format(self.dataset_A_dir,
-                                                                                        self.dataset_B_dir,
-                                                                                        self.model,
-                                                                                        self.sigma_d,
-                                                                                        self.now_datetime,
-                                                                                        args.which_direction))
+        sample_files_transfer = glob('{}/npy/transfer/*.npy'.format(args.test_full_dir))
         sample_files_transfer.sort(key=lambda x: int(os.path.splitext(os.path.basename(x))[0].split('_')[0]))
 
         # load the origin samples in npy format and sorted in ascending order
-        sample_files_cycle = glob('./test/{}2{}_{}_{}_{}/{}/npy/cycle/*.*'.format(self.dataset_A_dir,
-                                                                                  self.dataset_B_dir,
-                                                                                  self.model,
-                                                                                  self.sigma_d,
-                                                                                  self.now_datetime,
-                                                                                  args.which_direction))
+        sample_files_cycle = glob('{}/npy/cycle/*.npy'.format(args.test_full_dir))
         sample_files_cycle.sort(key=lambda x: int(os.path.splitext(os.path.basename(x))[0].split('_')[0]))
 
         # put the origin, transfer and cycle of the same phrase in one zip
@@ -218,18 +209,15 @@ class Classifier(object):
                                 sample_files_transfer,
                                 sample_files_cycle))
 
-        if self.checkpoint.restore(self.checkpoint_manager.latest_checkpoint):
+        if self.checkpoint_manager.latest_checkpoint is not None \
+           and self.checkpoint.restore(self.checkpoint_manager.latest_checkpoint):
             print(" [*] Load checkpoint succeeded!")
+            print(self.checkpoint_manager.latest_checkpoint)
         else:
             print(" [!] Load checkpoint failed...")
 
         # create a test path to store the generated sample midi files attached with probability
-        test_dir_mid = os.path.join(args.test_dir, '{}2{}_{}_{}_{}/{}/mid_attach_prob'.format(self.dataset_A_dir,
-                                                                                              self.dataset_B_dir,
-                                                                                              self.model,
-                                                                                              self.sigma_d,
-                                                                                              self.now_datetime,
-                                                                                              args.which_direction))
+        test_dir_mid = os.path.join(args.test_dir, '{}/mid_attach_prob'.format(args.test_full_dir))
         if not os.path.exists(test_dir_mid):
             os.makedirs(test_dir_mid)
 
@@ -268,7 +256,7 @@ class Classifier(object):
 
                 # for the accuracy calculation
                 count_origin += 1 if np.argmax(origin_softmax[0]) == 0 else 0
-                count_transfer += 1 if np.argmax(transfer_softmax[0]) == 0 else 0
+                count_transfer += 1 if np.argmax(transfer_softmax[0]) == 1 else 0
                 count_cycle += 1 if np.argmax(cycle_softmax[0]) == 0 else 0
 
                 # create paths for origin, transfer and cycle samples attached with probability
@@ -289,7 +277,7 @@ class Classifier(object):
 
                 # for the accuracy calculation
                 count_origin += 1 if np.argmax(origin_softmax[0]) == 1 else 0
-                count_transfer += 1 if np.argmax(transfer_softmax[0]) == 1 else 0
+                count_transfer += 1 if np.argmax(transfer_softmax[0]) == 0 else 0
                 count_cycle += 1 if np.argmax(cycle_softmax[0]) == 1 else 0
 
                 # create paths for origin, transfer and cycle samples attached with probability
